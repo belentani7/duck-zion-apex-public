@@ -8,6 +8,7 @@
     "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
+    "lint": "prettier --check client/index.html client/src/index.css client/src/pages/Home.tsx drizzle/schema.ts server/db.ts server/production.test.ts server/routers.ts server/routers/production.ts shared/production-catalog.ts docs/plugin-sources.md docs/visual-verification.md todo.md package.json",
     "format": "prettier --write .",
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
