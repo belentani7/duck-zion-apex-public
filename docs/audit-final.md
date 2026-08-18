@@ -1,30 +1,47 @@
-# Auditoría máxima — DUCK ZION Apex
+# DUCK ZION Apex — Informe operativo de auditoría y publicación
 
-## Regla de publicación
+## Regla de ejecución
 
-La publicación privada bajo `belentani7` solo está permitida cuando **Backend, Frontend, Utility, Relevance, Potential e Identity** alcanzan simultáneamente 10/10 y cada evidencia posee procedencia server-side verificable. La auditoría ignora hashes legacy sin `payload.sourcePaths` o cuyo digest no coincide con el inventario actual.
+La publicación privada bajo `belentani7` solo está permitida cuando **Backend, Frontend, Utility, Relevance, Potential e Identity** alcanzan simultáneamente 10/10 y cada evidencia posee procedencia server-side verificable. El gate ignora hashes legacy sin `payload.sourcePaths` o cuyo digest no coincide con el inventario actual.
 
-## Resultado reproducible de esta ejecución
+`production.runAudit` inventaría recursivamente desde el servidor, calcula SHA-256 por archivo, detecta señales de secretos y persiste un digest canónico. `recordQualityEvidence` solo acepta claves conocidas, fuentes server-side existentes y hashes calculados por el servidor. `calculateQualityGate` valida de nuevo la procedencia y el digest, por lo que no acepta valores dummy ni hashes arbitrarios.
 
-| Dimensión | Resultado | Evidencia                                                           | Estado    |
-| --------- | --------: | ------------------------------------------------------------------- | --------- |
-| Backend   |     10/10 | 4/4 checks; build, procedimientos tipados, tests y esquema          | aprobado  |
-| Frontend  |     10/10 | 4/4 checks; capturas, 404, accesibilidad y responsive               | aprobado  |
-| Utility   |     10/10 | 4/4 checks; proyecto, stem, entrega y auditoría funcional           | aprobado  |
-| Relevance |      7/10 | 3/4 checks; presets, escenas y fuentes de plugins aprobados         | bloqueado |
-| Potential |     10/10 | 4/4 checks; dominio tipado, contratos, observabilidad y carga       | aprobado  |
-| Identity  |     10/10 | 4/4 checks; tema DUCK ZION, tipografía técnica, motion y responsive | aprobado  |
+## Resultado de la auditoría
 
-La puntuación total es **57/60**, pero el estado correcto es `locked` porque la regla exige 10/10 simultáneo. El faltante es `fl-studio-validation`: el catálogo documenta formatos compatibles y enlaces oficiales, pero todavía no existe una ejecución verificable de instalación, escaneo, `Verify plugins` y carga real de los diez plugins dentro de FL Studio Windows.
+| Dimensión | Resultado | Evidencia                                                    | Estado    |
+| --------- | --------: | ------------------------------------------------------------ | --------- |
+| Backend   |     10/10 | 4/4: schema, procedimientos tipados, tests y build           | aprobado  |
+| Frontend  |     10/10 | 4/4: desktop, móvil, `/404` y accesibilidad                  | aprobado  |
+| Utility   |     10/10 | 4/4: proyecto, stem, entrega y auditoría funcional           | aprobado  |
+| Relevance |      7/10 | 3/4: presets exactos, escenas exactas y fuentes de plugins   | bloqueado |
+| Potential |     10/10 | 4/4: dominio tipado, contratos, observabilidad y carga       | aprobado  |
+| Identity  |     10/10 | 4/4: tema DUCK ZION, tipografía técnica, motion y responsive | aprobado  |
 
-## Seguridad y reproducibilidad
+Resultado total: **57/60**. El estado es `locked`; la regla no permite redondeo ni publicación parcial. La única falta es `fl-studio-validation`: no existe todavía una ejecución verificable en Windows de instalación, escaneo, `Verify plugins` y carga real de los diez plugins.
 
-`pnpm audit --audit-level=low` termina con `No known vulnerabilities found`. La suite contiene **15 pruebas**, todas pasan; TypeScript, lint, build y `git diff --check` pasan. `recordQualityEvidence` calcula hashes en el servidor, exige claves conocidas y rechaza claves de flujo sin artefactos mapeados. `calculateQualityGate` valida además la procedencia y el digest contra el inventario actual, por lo que no acepta el hash legacy `bbbb...` ni cualquier hash hexadecimal arbitrario.
+## Catálogo de producción
 
-## Decisión de GitHub
+El producto mantiene exactamente diez referencias, solo con enlaces y metadatos; no redistribuye binarios de terceros ni descarga instaladores silenciosamente.
 
-No se intentó crear ni publicar `belentani7/duck-zion-apex-audit-2026-08-18`. La decisión es deliberada y obligatoria: publicar con Relevance 7/10 violaría la puerta 10/10 solicitada. El siguiente artefacto necesario es un informe de ejecución en Windows con hashes, arquitectura, licencia, escaneo de FL Studio y carga real de cada plugin.
+| Plugin                        | Uso principal                      | Fuente oficial                                                                 |
+| ----------------------------- | ---------------------------------- | ------------------------------------------------------------------------------ |
+| MAutoPitch                    | Afinación vocal y formantes        | [MeldaProduction](https://www.meldaproduction.com/MAutoPitch)                  |
+| TDR Nova                      | EQ dinámico y compresión selectiva | [Tokyo Dawn Records](https://www.tokyodawn.net/tdr-nova/)                      |
+| T-De-Esser 2                  | Control de sibilancia              | [Techivation](https://techivation.com/t-de-esser/)                             |
+| DC1A                          | Compresión de carácter             | [Klanghelm](https://klanghelm.com/contents/products/DC1A.html)                 |
+| IVGI2                         | Saturación armónica                | [Klanghelm](https://klanghelm.com/contents/products/IVGI.html)                 |
+| Valhalla Supermassive         | Delay y reverb                     | [Valhalla DSP](https://valhalladsp.com/shop/reverb/valhalla-supermassive/)     |
+| Youlean Loudness Meter 2 Free | LUFS, true peak y dinámica         | [Youlean](https://youlean.co/youlean-loudness-meter/)                          |
+| Surge XT                      | Síntesis híbrida                   | [Surge Synthesizer](https://surge-synthesizer.github.io/)                      |
+| Decent Sampler                | Sampler para Windows               | [Decent Samples](https://www.decentsamples.com/product/decent-sampler-plugin/) |
+| Limiter No6                   | Limitación final                   | [Repositorio oficial](https://github.com/losno/limiter6)                       |
 
-## Fuentes técnicas
+Para cada referencia externa, la validación pendiente debe registrar hash, firma, arquitectura, licencia, escaneo y carga en FL Studio. Hasta entonces, `fl-studio-validation` no puede marcarse como aprobada.
 
-La base metodológica combina controles de verificación de aplicación de OWASP ASVS, procedencia de supply chain de SLSA y documentación oficial de Image-Line sobre formatos soportados y `Manage plugins > Find installed plugins + Verify plugins`. Véase `docs/audit-standard-research.md`.
+## Verificación técnica
+
+`pnpm audit --audit-level=low` termina con `No known vulnerabilities found`. La suite contiene **15 pruebas** y pasa completa; TypeScript, lint, build y `git diff --check` también pasan. `docs/audit-final.json` se conserva únicamente como salida machine-readable de la última evaluación, no como documentación adicional.
+
+## Decisión GitHub
+
+No se creó ni publicó `belentani7/duck-zion-apex-audit-2026-08-18`, porque publicar con Relevance 7/10 violaría la puerta 10/10 solicitada. La mutación `production.publishPrivateGithub` vuelve a calcular el gate en servidor y no ejecuta `gh` si una sola dimensión está bloqueada. Cuando exista la validación real de FL Studio y el gate sea 10/10, el procedimiento podrá crear el repositorio con `gh repo create --private --source <project> --push`.

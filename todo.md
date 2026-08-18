@@ -56,3 +56,16 @@
 - [x] Endurecer recordQualityEvidence para aceptar solo claves permitidas y hashes calculados/verificados por el servidor, eliminando evidencias arbitrarias del cliente.
 - [x] Bloquear claves permitidas sin fuentes server-side mapeadas y probar que project-flow, stem-flow, delivery-flow, audit-flow y fl-studio-validation solo se derivan de flujos reales.
 - [x] Hacer que calculateQualityGate valide provenance/sourcePaths server-side y descarte evidencias legacy o hashes dummy ya persistidos.
+
+## Limpieza y publicación solicitada
+
+- [x] Eliminar apuntes y artefactos temporales que no aporten funcionalidad ni auditoría reproducible.
+- [x] Consolidar la documentación imprescindible en un único informe operativo breve.
+- [x] Reejecutar la auditoría completa después de la limpieza y aplicar mejoras reales sin fabricar evidencia.
+- [ ] Publicar un repositorio privado nuevo bajo belentani7 únicamente si el gate alcanza 10/10 verificable.
+
+## Publicación pública solicitada
+
+- [ ] Preparar un README público que indique el estado real del gate 57/60 y la validación FL Studio pendiente.
+- [ ] Crear y subir el proyecto limpio a un repositorio público nuevo bajo belentani7.
+- [ ] Verificar visibilidad pública, URL, rama principal y commit publicado.
