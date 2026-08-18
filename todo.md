@@ -50,8 +50,8 @@
 - [x] Ejecutar auditoría reproducible completa de backend, frontend, utilidad, relevancia, potencial e identidad.
 - [x] Generar y persistir únicamente evidencias verificables con SHA-256 para el gate.
 - [x] Evaluar el gate y bloquear cualquier publicación si alguna dimensión no alcanza 10/10.
-- [ ] Crear un repositorio privado nuevo bajo belentani7 solo si el gate está abierto y relevance alcanza 10/10 con validación FL Studio real.
-- [ ] Verificar el repositorio remoto, su privacidad y el contenido publicado si la publicación se autoriza.
+- [x] No crear el repositorio privado nuevo bajo belentani7: el gate permanece locked en 57/60 por falta de validación FL Studio real; la publicación queda correctamente condicionada.
+- [x] Verificar que belentani7/duck-zion-apex-audit-2026-08-18 no existe y que no se intentó publicar mientras el gate estaba bloqueado.
 - [x] Remediar las vulnerabilidades de dependencias detectadas por pnpm audit, incluyendo 3 críticas y 49 altas, y repetir la auditoría sin forzar el gate.
 - [x] Endurecer recordQualityEvidence para aceptar solo claves permitidas y hashes calculados/verificados por el servidor, eliminando evidencias arbitrarias del cliente.
 - [x] Bloquear claves permitidas sin fuentes server-side mapeadas y probar que project-flow, stem-flow, delivery-flow, audit-flow y fl-studio-validation solo se derivan de flujos reales.
