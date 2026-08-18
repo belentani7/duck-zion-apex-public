@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { groupMetricHistory } from "@shared/metric-history";
 import {
   ArrowUpRight,
   AudioLines,
@@ -57,6 +58,10 @@ export default function Home() {
     Record<string, string | number | boolean>
   >({ gainDb: 0, widthPct: 100 });
   const [commentDraft, setCommentDraft] = useState("");
+  const [stemName, setStemName] = useState("Vocal Lead");
+  const [stemVersion, setStemVersion] = useState("v01");
+  const [stemSha, setStemSha] = useState("");
+  const [metricDeliveryFilter, setMetricDeliveryFilter] = useState("all");
   const [chat, setChat] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -113,6 +118,15 @@ export default function Home() {
         projectId: activeProject.id,
       }),
   });
+  const createStem = trpc.production.createStem.useMutation({
+    onSuccess: () => {
+      setStemSha("");
+      if (activeProject)
+        void trpcUtils.production.projectDetail.invalidate({
+          projectId: activeProject.id,
+        });
+    },
+  });
   const createProject = trpc.production.createProject.useMutation({
     onSuccess: () => overview.refetch(),
   });
@@ -121,6 +135,10 @@ export default function Home() {
   const detail = trpc.production.projectDetail.useQuery(
     { projectId: activeProject?.id ?? 1 },
     { enabled: Boolean(activeProject) }
+  );
+  const metricHistory = useMemo(
+    () => groupMetricHistory(detail.data?.metrics ?? []),
+    [detail.data?.metrics]
   );
   const activePreset = useMemo(
     () => presets.data?.find(preset => preset.name === selectedPreset),
@@ -239,13 +257,7 @@ export default function Home() {
     if (!activeProject || runAudit.isPending) return;
     await runAudit.mutateAsync({
       projectId: activeProject.id,
-      files: (detail.data?.stems ?? []).flatMap(stem =>
-        stem.sha256
-          ? [{ path: stem.fileUrl ?? stem.name, sha256: stem.sha256 }]
-          : []
-      ),
-      secretSignals: 0,
-      changeSummary: "Project manifest audit",
+      changeSummary: "Server-side project inventory audit",
     });
   }
 
@@ -986,8 +998,68 @@ export default function Home() {
                 <p className="text-xs text-white/35">
                   Stems, deliveries and loudness history for the active project.
                 </p>
+                <select
+                  value={metricDeliveryFilter}
+                  onChange={event =>
+                    setMetricDeliveryFilter(event.target.value)
+                  }
+                  className="mt-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white"
+                >
+                  <option value="all">All deliveries</option>
+                  {(detail.data?.deliveries ?? []).map(delivery => (
+                    <option key={delivery.id} value={String(delivery.id)}>
+                      {delivery.label}
+                    </option>
+                  ))}
+                </select>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-[#b8ff45]/15 bg-[#b8ff45]/[0.04] p-3 md:col-span-3">
+                  <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-[#b8ff45]">
+                    Register stem version
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Input
+                      value={stemName}
+                      onChange={event => setStemName(event.target.value)}
+                      placeholder="Stem name"
+                      className="border-white/10 bg-black/20 text-white"
+                    />
+                    <Input
+                      value={stemVersion}
+                      onChange={event => setStemVersion(event.target.value)}
+                      placeholder="v01"
+                      className="border-white/10 bg-black/20 text-white"
+                    />
+                    <Input
+                      value={stemSha}
+                      onChange={event => setStemSha(event.target.value)}
+                      placeholder="SHA-256 optional"
+                      className="border-white/10 bg-black/20 text-white"
+                    />
+                  </div>
+                  <Button
+                    onClick={() =>
+                      activeProject &&
+                      void createStem.mutateAsync({
+                        projectId: activeProject.id,
+                        name: stemName,
+                        versionLabel: stemVersion,
+                        sha256: stemSha.length === 64 ? stemSha : undefined,
+                      })
+                    }
+                    disabled={
+                      !activeProject ||
+                      !stemName.trim() ||
+                      !stemVersion.trim() ||
+                      createStem.isPending
+                    }
+                    size="sm"
+                    className="mt-2 bg-[#b8ff45] text-black"
+                  >
+                    Register version
+                  </Button>
+                </div>
                 {detail.data?.stems?.length ? (
                   detail.data.stems.map(stem => (
                     <div key={stem.id} className="rounded-lg bg-black/20 p-3">
@@ -1007,23 +1079,37 @@ export default function Home() {
                     No stem versions in the active project yet.
                   </div>
                 )}
-                {detail.data?.metrics?.map(metric => (
-                  <div
-                    key={metric.id}
-                    className="rounded-lg bg-[#b8ff45]/[0.06] p-3"
-                  >
-                    <div className="font-mono text-[10px] uppercase tracking-wider text-white/35">
-                      Loudness snapshot
+                {Object.entries(metricHistory)
+                  .filter(
+                    ([deliveryId]) =>
+                      metricDeliveryFilter === "all" ||
+                      deliveryId === metricDeliveryFilter
+                  )
+                  .flatMap(([deliveryId, metrics]) =>
+                    metrics.map(metric => ({ deliveryId, metric }))
+                  )
+                  .map(({ deliveryId, metric }) => (
+                    <div
+                      key={metric.id}
+                      className="rounded-lg bg-[#b8ff45]/[0.06] p-3"
+                    >
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-white/35">
+                        Loudness snapshot ·{" "}
+                        {deliveryId === "unlinked"
+                          ? "Unlinked"
+                          : (detail.data?.deliveries.find(
+                              delivery => String(delivery.id) === deliveryId
+                            )?.label ?? `Delivery #${deliveryId}`)}
+                      </div>
+                      <div className="mt-2 text-lg font-bold text-[#b8ff45]">
+                        {metric.lufs ?? "—"} LUFS
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        True peak {metric.truePeak ?? "—"} · DR{" "}
+                        {metric.dynamicRange ?? "—"}
+                      </div>
                     </div>
-                    <div className="mt-2 text-lg font-bold text-[#b8ff45]">
-                      {metric.lufs ?? "—"} LUFS
-                    </div>
-                    <div className="mt-1 text-xs text-white/45">
-                      True peak {metric.truePeak ?? "—"} · DR{" "}
-                      {metric.dynamicRange ?? "—"}
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </CardContent>
             </Card>
           </TabsContent>

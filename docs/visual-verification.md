@@ -13,3 +13,11 @@ La captura desktop 1280x900 posterior a las últimas integraciones confirma que 
 La captura móvil final mantiene el layout responsive, el header compacto, CTAs accesibles y tarjetas sin desbordamiento horizontal después de añadir auditoría y portal dinámico. Las vistas de cliente y vocal lab quedan por debajo del primer viewport y se acceden mediante tabs/scroll, comportamiento esperado.
 
 La verificación de rutas capturó `/` con el dashboard DUCK ZION y `/404` con el fallback visual del scaffold. La ruta principal muestra estado vacío seguro para proyectos y el fallback ofrece botón Go Home. El flujo de la interfaz conserva estados de ausencia de proyecto, ausencia de entrega activa, ausencia de comentarios y puerta bloqueada.
+
+## Verificación final 2026-08-18
+
+La vista desktop a 1280x720 mantiene la identidad oscura/neón, el encabezado de comandos, las tarjetas métricas, el estado bloqueado del Quality Gate, el feed de auditoría y la cuadrícula responsive sin desbordamiento visible. El botón de auditoría queda expuesto junto a la creación de proyecto y el gate explica que la publicación privada exige evidencia reproducible 10/10.
+
+La vista móvil a 375x812 apila el dashboard en una sola columna legible. Las acciones primarias permanecen visibles, las tarjetas no se recortan, la barra de pestañas queda contenida y el feed de actividad conserva legibilidad. El estado vacío de proyectos y la advertencia del gate mantienen contraste y rutas de salida claras.
+
+Durante la captura no se observaron errores TypeScript; únicamente apareció una advertencia no bloqueante sobre la antigüedad de `baseline-browser-mapping`.

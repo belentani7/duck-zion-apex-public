@@ -79,6 +79,18 @@ describe("production catalog contracts", () => {
     expect(first.digest).toBe(second.digest);
   });
 
+  it("records a quality evidence artifact by SHA-256", async () => {
+    const result = await appRouter
+      .createCaller(createContext())
+      .production.recordQualityEvidence({
+        projectId: 1,
+        evidenceKey: "build",
+        artifactSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      });
+    expect(result).toEqual({ recorded: true, evidenceKey: "build" });
+  });
+
   it("keeps GitHub publishing locked without evidence", async () => {
     const result = await appRouter
       .createCaller(createContext())
@@ -86,6 +98,6 @@ describe("production catalog contracts", () => {
     expect(result.publishable).toBe(false);
     expect(result.status).toBe("locked");
     expect(result.dimensions).toHaveLength(6);
-    expect(result.dimensions.every(item => item.score < 10)).toBe(true);
+    expect(result.dimensions.some(item => item.score < 10)).toBe(true);
   });
 });

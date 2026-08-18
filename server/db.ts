@@ -231,6 +231,18 @@ export async function listActivity(actorId: number) {
     .limit(12);
 }
 
+export async function listProjectAudit(projectId: number, actorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(auditLogs)
+    .where(
+      and(eq(auditLogs.projectId, projectId), eq(auditLogs.actorId, actorId))
+    )
+    .orderBy(desc(auditLogs.createdAt));
+}
+
 export async function writeAudit(input: typeof auditLogs.$inferInsert) {
   if (process.env.NODE_ENV === "test") return;
   const db = await getDb();

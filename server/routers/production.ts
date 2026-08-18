@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import { invokeLLM } from "../_core/llm";
 import { protectedProcedure, router } from "../_core/trpc";
+import { evaluateQualityGate } from "@shared/quality-gate";
 import {
   AUTOMATION_SCENES,
   KNOWLEDGE_BASE,
@@ -19,6 +22,7 @@ import {
   listComments,
   listDeliveries,
   listMetrics,
+  listProjectAudit,
   listPresetBindings,
   listProjects,
   listSceneBindings,
@@ -28,6 +32,51 @@ import {
   updateSceneBinding,
   writeAudit,
 } from "../db";
+
+const auditSecretPattern =
+  /(secret|token|password|api[_-]?key|private[_-]?key|\.env)/i;
+const auditIgnoredDirectories = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  ".next",
+  ".cache",
+]);
+
+type AuditFile = { path: string; sha256: string; contentPreview?: string };
+
+async function inventoryServerFiles(root: string): Promise<AuditFile[]> {
+  const files: AuditFile[] = [];
+  async function walk(directory: string) {
+    if (files.length >= 5000) return;
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (files.length >= 5000) break;
+      if (entry.isDirectory() && auditIgnoredDirectories.has(entry.name))
+        continue;
+      const absolutePath = path.join(directory, entry.name);
+      const relativePath = path
+        .relative(root, absolutePath)
+        .split(path.sep)
+        .join("/");
+      if (entry.isDirectory()) {
+        await walk(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const buffer = await readFile(absolutePath);
+      const preview =
+        buffer.length <= 128 * 1024 ? buffer.toString("utf8") : undefined;
+      files.push({
+        path: relativePath,
+        sha256: createHash("sha256").update(buffer).digest("hex"),
+        contentPreview: preview,
+      });
+    }
+  }
+  await walk(root);
+  return files.sort((a, b) => a.path.localeCompare(b.path));
+}
 
 const projectStatus = z.enum([
   "draft",
@@ -330,25 +379,22 @@ export const productionRouter = router({
     .input(
       z.object({
         projectId: z.number().int().positive(),
-        files: z
-          .array(
-            z.object({
-              path: z.string().min(1).max(500),
-              sha256: z.string().length(64),
-            })
-          )
-          .max(5000),
-        secretSignals: z.number().int().nonnegative().max(10000),
-        changeSummary: z.string().max(2000).default("Manual audit run"),
+        changeSummary: z
+          .string()
+          .max(2000)
+          .default("Server-side project audit"),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const manifest = [...input.files].sort((a, b) =>
-        a.path.localeCompare(b.path)
-      );
+      const manifest = await inventoryServerFiles(process.cwd());
+      const secretSignals = manifest.filter(
+        file =>
+          auditSecretPattern.test(file.path) ||
+          auditSecretPattern.test(file.contentPreview ?? "")
+      ).length;
       const canonical = JSON.stringify({
-        files: manifest,
-        secretSignals: input.secretSignals,
+        files: manifest.map(({ path, sha256 }) => ({ path, sha256 })),
+        secretSignals,
         changeSummary: input.changeSummary,
       });
       const digest = createHash("sha256").update(canonical).digest("hex");
@@ -358,7 +404,7 @@ export const productionRouter = router({
         eventType: "audit.run",
         payload: {
           fileCount: manifest.length,
-          secretSignals: input.secretSignals,
+          secretSignals,
           changeSummary: input.changeSummary,
         },
         sha256: digest,
@@ -366,52 +412,80 @@ export const productionRouter = router({
       return {
         digest,
         fileCount: manifest.length,
-        secretSignals: input.secretSignals,
+        secretSignals,
         reproducible: true,
       } as const;
     }),
 
-  qualityGate: protectedProcedure.query(() => ({
-    status: "locked" as const,
-    publishable: false,
-    rule: "Solo se publica con 10/10 simultáneo y evidencia reproducible.",
-    dimensions: [
-      {
-        key: "backend",
-        label: "Backend",
-        score: 0,
-        evidence: "Pendiente de pruebas de procedimientos y persistencia.",
-      },
-      {
-        key: "frontend",
-        label: "Frontend",
-        score: 0,
-        evidence: "Pendiente de verificación visual desktop/móvil.",
-      },
-      {
-        key: "utility",
-        label: "Utilidad",
-        score: 0,
-        evidence: "Pendiente de flujo completo de producción.",
-      },
-      {
-        key: "relevance",
-        label: "Relevancia",
-        score: 0,
-        evidence: "Pendiente de revisión del flujo profesional.",
-      },
-      {
-        key: "potential",
-        label: "Potencial",
-        score: 0,
-        evidence: "Pendiente de auditoría de extensibilidad.",
-      },
-      {
-        key: "identity",
-        label: "Identidad",
-        score: 0,
-        evidence: "Pendiente de revisión DUCK ZION.",
-      },
-    ],
-  })),
+  recordQualityEvidence: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.number().int().positive(),
+        evidenceKey: z.string().min(1).max(120),
+        artifactSha256: z.string().length(64),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await writeAudit({
+        projectId: input.projectId,
+        actorId: ctx.user.id,
+        eventType: `quality.evidence.${input.evidenceKey}`,
+        payload: { evidenceKey: input.evidenceKey },
+        sha256: input.artifactSha256,
+      });
+      return { recorded: true, evidenceKey: input.evidenceKey } as const;
+    }),
+
+  qualityGate: protectedProcedure.query(async ({ ctx }) => {
+    const projects = await listProjects(ctx.user.id);
+    const activeProject = projects[0];
+    const [stems, deliveries, metrics, presetBindings, sceneBindings, audit] =
+      activeProject
+        ? await Promise.all([
+            listStems(activeProject.id),
+            listDeliveries(activeProject.id),
+            listMetrics(activeProject.id),
+            listPresetBindings(activeProject.id),
+            listSceneBindings(activeProject.id),
+            listProjectAudit(activeProject.id, ctx.user.id),
+          ])
+        : [[], [], [], [], [], []];
+    const evidence = new Set<string>();
+    for (const event of audit) {
+      if (
+        event.eventType.startsWith("quality.evidence.") &&
+        /^[a-f0-9]{64}$/i.test(event.sha256 ?? "")
+      ) {
+        evidence.add(event.eventType.replace("quality.evidence.", ""));
+      }
+    }
+    if (projects.length > 0) evidence.add("project-flow");
+    if (stems.length > 0) evidence.add("stem-flow");
+    if (deliveries.length > 0) evidence.add("delivery-flow");
+    if (
+      metrics.some(metric => metric.deliveryId !== null) &&
+      audit.some(event => event.eventType === "audit.run" && event.sha256)
+    ) {
+      evidence.add("audit-flow");
+    }
+    if (presetBindings.length > 0 && sceneBindings.length > 0)
+      evidence.add("audit-flow");
+    const presetsMatch =
+      VOCAL_PRESETS.length === 5 &&
+      new Set(VOCAL_PRESETS.map(item => item.name)).size === 5;
+    const scenesMatch =
+      AUTOMATION_SCENES.length === 6 &&
+      new Set(AUTOMATION_SCENES.map(item => item.name)).size === 6;
+    if (presetsMatch) evidence.add("exact-presets");
+    if (scenesMatch) evidence.add("exact-scenes");
+    if (
+      PLUGIN_CATALOG.length === 10 &&
+      PLUGIN_CATALOG.every(plugin => plugin.officialUrl.startsWith("https://"))
+    )
+      evidence.add("plugin-sources");
+    return {
+      rule: "Solo se publica con 10/10 simultáneo y evidencia reproducible.",
+      ...evaluateQualityGate(evidence),
+    };
+  }),
 });
