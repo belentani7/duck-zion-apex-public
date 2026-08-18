@@ -1,0 +1,49 @@
+{
+  "auditedAt": "2026-08-18T12:18:04.134Z",
+  "repositoryTarget": "belentani7/duck-zion-apex-audit-2026-08-18",
+  "gate": {
+    "rule": "Solo se publica con 10/10 simultáneo y evidencia reproducible.",
+    "status": "locked",
+    "publishable": false,
+    "dimensions": [
+      {
+        "key": "backend",
+        "label": "Backend",
+        "score": 10,
+        "evidence": "4/4 required evidence checks passed."
+      },
+      {
+        "key": "frontend",
+        "label": "Frontend",
+        "score": 10,
+        "evidence": "4/4 required evidence checks passed."
+      },
+      {
+        "key": "utility",
+        "label": "Utility",
+        "score": 10,
+        "evidence": "4/4 required evidence checks passed."
+      },
+      {
+        "key": "relevance",
+        "label": "Relevance",
+        "score": 7,
+        "evidence": "3/4 required evidence checks passed."
+      },
+      {
+        "key": "potential",
+        "label": "Potential",
+        "score": 10,
+        "evidence": "4/4 required evidence checks passed."
+      },
+      {
+        "key": "identity",
+        "label": "Identity",
+        "score": 10,
+        "evidence": "4/4 required evidence checks passed."
+      }
+    ]
+  },
+  "publicationAttempted": false,
+  "publicationReason": "Blocked: all six dimensions are not 10/10."
+}

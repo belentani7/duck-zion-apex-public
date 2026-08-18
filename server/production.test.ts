@@ -80,16 +80,34 @@ describe("production catalog contracts", () => {
     expect(first.digest).toBe(second.digest);
   });
 
-  it("records a quality evidence artifact by SHA-256", async () => {
+  it("records a quality evidence artifact hashed by the server", async () => {
     const result = await appRouter
       .createCaller(createContext())
       .production.recordQualityEvidence({
         projectId: 1,
         evidenceKey: "build",
-        artifactSha256:
-          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       });
-    expect(result).toEqual({ recorded: true, evidenceKey: "build" });
+    expect(result.recorded).toBe(true);
+    expect(result.evidenceKey).toBe("build");
+    expect(result.artifactSha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("rejects flow evidence without a server artifact source", async () => {
+    await expect(
+      appRouter.createCaller(createContext()).production.recordQualityEvidence({
+        projectId: 1,
+        evidenceKey: "project-flow",
+      })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  });
+
+  it("rejects arbitrary quality evidence keys", async () => {
+    await expect(
+      appRouter.createCaller(createContext()).production.recordQualityEvidence({
+        projectId: 1,
+        evidenceKey: "fabricated-evidence",
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("publishes privately through the guarded gh command when the runner succeeds", async () => {

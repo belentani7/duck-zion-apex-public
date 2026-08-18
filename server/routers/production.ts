@@ -7,7 +7,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { invokeLLM } from "../_core/llm";
 import { protectedProcedure, router } from "../_core/trpc";
-import { evaluateQualityGate } from "@shared/quality-gate";
+import { evaluateQualityGate, QUALITY_DIMENSIONS } from "@shared/quality-gate";
 import {
   AUTOMATION_SCENES,
   KNOWLEDGE_BASE,
@@ -18,6 +18,7 @@ import {
   bindPreset,
   bindScene,
   createComment,
+  createDelivery,
   createMetric,
   createProject,
   createStem,
@@ -45,6 +46,32 @@ const auditIgnoredDirectories = new Set([
   ".next",
   ".cache",
 ]);
+
+const evidenceSourceFiles: Record<string, string[]> = {
+  schema: ["drizzle/schema.ts"],
+  "typed-procedures": ["server/routers/production.ts"],
+  tests: ["server/production.test.ts", "shared/quality-gate.test.ts"],
+  build: ["package.json", "pnpm-lock.yaml"],
+  "desktop-capture": ["docs/visual-verification.md"],
+  "mobile-capture": ["docs/visual-verification.md"],
+  "route-404": ["client/src/pages/NotFound.tsx"],
+  accessibility: ["client/src/index.css", "docs/visual-verification.md"],
+  "exact-presets": ["shared/production-catalog.ts"],
+  "exact-scenes": ["shared/production-catalog.ts"],
+  "plugin-sources": ["shared/production-catalog.ts", "docs/plugin-sources.md"],
+  "duck-zion-theme": ["client/src/index.css"],
+  "technical-type": ["client/index.html", "client/src/index.css"],
+  motion: ["client/src/index.css", "client/src/pages/Home.tsx"],
+  responsive: ["client/src/index.css", "docs/visual-verification.md"],
+  "typed-domain": ["shared/types.ts", "server/routers/production.ts"],
+  "extension-contracts": ["shared/production-catalog.ts", "shared/types.ts"],
+  observability: ["server/routers/production.ts", "docs/audit-runtime.log"],
+  "load-test": ["docs/audit-runtime.log"],
+};
+
+const allowedEvidenceKeys: Set<string> = new Set(
+  QUALITY_DIMENSIONS.flatMap(dimension => dimension.requiredEvidence)
+);
 
 type AuditFile = { path: string; sha256: string; contentPreview?: string };
 
@@ -153,13 +180,39 @@ async function calculateQualityGate(actorId: number) {
         ])
       : [[], [], [], [], [], []];
   const evidence = new Set<string>();
+  const serverManifest = await inventoryServerFiles(process.cwd());
+  const manifestByPath = new Map(
+    serverManifest.map(file => [file.path, file.sha256] as const)
+  );
   for (const event of audit) {
+    if (!event.eventType.startsWith("quality.evidence.")) continue;
+    const evidenceKey = event.eventType.replace("quality.evidence.", "");
+    const sourcePaths = evidenceSourceFiles[evidenceKey];
+    const payload = event.payload as { sourcePaths?: unknown } | null;
+    const payloadPaths = Array.isArray(payload?.sourcePaths)
+      ? payload.sourcePaths
+      : null;
     if (
-      event.eventType.startsWith("quality.evidence.") &&
-      /^[a-f0-9]{64}$/i.test(event.sha256 ?? "")
+      !sourcePaths ||
+      !payloadPaths ||
+      payloadPaths.length !== sourcePaths.length ||
+      !sourcePaths.every(
+        (sourcePath, index) => payloadPaths[index] === sourcePath
+      )
     ) {
-      evidence.add(event.eventType.replace("quality.evidence.", ""));
+      continue;
     }
+    const expectedHash = createHash("sha256")
+      .update(
+        JSON.stringify(
+          sourcePaths.map(sourcePath => ({
+            path: sourcePath,
+            sha256: manifestByPath.get(sourcePath),
+          }))
+        )
+      )
+      .digest("hex");
+    if (event.sha256 === expectedHash) evidence.add(evidenceKey);
   }
   if (projects.length > 0) evidence.add("project-flow");
   if (stems.length > 0) evidence.add("stem-flow");
@@ -319,6 +372,29 @@ export const productionRouter = router({
         sha256: null,
       });
       return { id };
+    }),
+
+  createDelivery: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.number().int().positive(),
+        stemVersionId: z.number().int().positive(),
+        label: z.string().min(1).max(160),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const id = await createDelivery({
+        ...input,
+        status: "sent",
+      });
+      await writeAudit({
+        projectId: input.projectId,
+        actorId: ctx.user.id,
+        eventType: "delivery.created",
+        payload: { id, ...input },
+        sha256: null,
+      });
+      return { id } as const;
     }),
 
   addComment: protectedProcedure
@@ -537,18 +613,52 @@ export const productionRouter = router({
       z.object({
         projectId: z.number().int().positive(),
         evidenceKey: z.string().min(1).max(120),
-        artifactSha256: z.string().length(64),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!allowedEvidenceKeys.has(input.evidenceKey)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unknown quality evidence key: ${input.evidenceKey}`,
+        });
+      }
+      const sourcePaths = evidenceSourceFiles[input.evidenceKey] ?? [];
+      if (sourcePaths.length === 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Evidence ${input.evidenceKey} must be derived from a real project flow.`,
+        });
+      }
+      const manifest = await inventoryServerFiles(process.cwd());
+      const files = manifest.filter(file => sourcePaths.includes(file.path));
+      if (files.length !== sourcePaths.length) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Required server artifact is missing for ${input.evidenceKey}.`,
+        });
+      }
+      const artifactSha256 = createHash("sha256")
+        .update(
+          JSON.stringify(
+            sourcePaths.map(sourcePath => ({
+              path: sourcePath,
+              sha256: files.find(file => file.path === sourcePath)?.sha256,
+            }))
+          )
+        )
+        .digest("hex");
       await writeAudit({
         projectId: input.projectId,
         actorId: ctx.user.id,
         eventType: `quality.evidence.${input.evidenceKey}`,
-        payload: { evidenceKey: input.evidenceKey },
-        sha256: input.artifactSha256,
+        payload: { evidenceKey: input.evidenceKey, sourcePaths },
+        sha256: artifactSha256,
       });
-      return { recorded: true, evidenceKey: input.evidenceKey } as const;
+      return {
+        recorded: true,
+        evidenceKey: input.evidenceKey,
+        artifactSha256,
+      } as const;
     }),
 
   qualityGate: protectedProcedure.query(({ ctx }) =>

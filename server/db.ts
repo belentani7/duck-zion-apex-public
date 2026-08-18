@@ -190,6 +190,13 @@ export async function updateDeliveryStatus(
     .where(eq(deliveries.id, id));
 }
 
+export async function createDelivery(input: typeof deliveries.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const result = await db.insert(deliveries).values(input);
+  return Number(result[0].insertId);
+}
+
 export async function listDeliveries(projectId: number) {
   const db = await getDb();
   if (!db) return [];
