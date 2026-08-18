@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { invokeLLM } from "../_core/llm";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -76,6 +79,118 @@ async function inventoryServerFiles(root: string): Promise<AuditFile[]> {
   }
   await walk(root);
   return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+const execFileAsync = promisify(execFile);
+type GithubRunner = (
+  file: string,
+  args: string[]
+) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
+
+export async function publishPrivateRepository(
+  repository: string,
+  sourceDirectory: string,
+  runner: GithubRunner = execFileAsync
+) {
+  try {
+    const { stdout } = await runner("gh", [
+      "repo",
+      "create",
+      repository,
+      "--private",
+      "--source",
+      sourceDirectory,
+      "--remote",
+      "origin",
+      "--push",
+    ]);
+    return String(stdout).trim();
+  } catch (error) {
+    const details = String(error);
+    if (/ENOENT|not found/i.test(details)) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "GitHub CLI (gh) is not installed in the server runtime.",
+      });
+    }
+    if (/auth|login|token|credential/i.test(details)) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "GitHub CLI is not authenticated for private publication.",
+      });
+    }
+    if (/already exists|name already exists|422/i.test(details)) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: `GitHub repository ${repository} already exists or cannot be claimed.`,
+      });
+    }
+    if (/push|rejected|non-fast-forward/i.test(details)) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "GitHub repository was created, but the initial push failed.",
+      });
+    }
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `GitHub publication failed: ${details}`,
+    });
+  }
+}
+
+async function calculateQualityGate(actorId: number) {
+  const projects = await listProjects(actorId);
+  const activeProject = projects[0];
+  const [stems, deliveries, metrics, presetBindings, sceneBindings, audit] =
+    activeProject
+      ? await Promise.all([
+          listStems(activeProject.id),
+          listDeliveries(activeProject.id),
+          listMetrics(activeProject.id),
+          listPresetBindings(activeProject.id),
+          listSceneBindings(activeProject.id),
+          listProjectAudit(activeProject.id, actorId),
+        ])
+      : [[], [], [], [], [], []];
+  const evidence = new Set<string>();
+  for (const event of audit) {
+    if (
+      event.eventType.startsWith("quality.evidence.") &&
+      /^[a-f0-9]{64}$/i.test(event.sha256 ?? "")
+    ) {
+      evidence.add(event.eventType.replace("quality.evidence.", ""));
+    }
+  }
+  if (projects.length > 0) evidence.add("project-flow");
+  if (stems.length > 0) evidence.add("stem-flow");
+  if (deliveries.length > 0) evidence.add("delivery-flow");
+  if (
+    metrics.some(metric => metric.deliveryId !== null) &&
+    audit.some(event => event.eventType === "audit.run" && event.sha256)
+  ) {
+    evidence.add("audit-flow");
+  }
+  if (presetBindings.length > 0 && sceneBindings.length > 0)
+    evidence.add("audit-flow");
+  if (
+    VOCAL_PRESETS.length === 5 &&
+    new Set(VOCAL_PRESETS.map(item => item.name)).size === 5
+  )
+    evidence.add("exact-presets");
+  if (
+    AUTOMATION_SCENES.length === 6 &&
+    new Set(AUTOMATION_SCENES.map(item => item.name)).size === 6
+  )
+    evidence.add("exact-scenes");
+  if (
+    PLUGIN_CATALOG.length === 10 &&
+    PLUGIN_CATALOG.every(plugin => plugin.officialUrl.startsWith("https://"))
+  )
+    evidence.add("plugin-sources");
+  return {
+    rule: "Solo se publica con 10/10 simultáneo y evidencia reproducible.",
+    ...evaluateQualityGate(evidence),
+  };
 }
 
 const projectStatus = z.enum([
@@ -436,56 +551,45 @@ export const productionRouter = router({
       return { recorded: true, evidenceKey: input.evidenceKey } as const;
     }),
 
-  qualityGate: protectedProcedure.query(async ({ ctx }) => {
-    const projects = await listProjects(ctx.user.id);
-    const activeProject = projects[0];
-    const [stems, deliveries, metrics, presetBindings, sceneBindings, audit] =
-      activeProject
-        ? await Promise.all([
-            listStems(activeProject.id),
-            listDeliveries(activeProject.id),
-            listMetrics(activeProject.id),
-            listPresetBindings(activeProject.id),
-            listSceneBindings(activeProject.id),
-            listProjectAudit(activeProject.id, ctx.user.id),
-          ])
-        : [[], [], [], [], [], []];
-    const evidence = new Set<string>();
-    for (const event of audit) {
-      if (
-        event.eventType.startsWith("quality.evidence.") &&
-        /^[a-f0-9]{64}$/i.test(event.sha256 ?? "")
-      ) {
-        evidence.add(event.eventType.replace("quality.evidence.", ""));
-      }
-    }
-    if (projects.length > 0) evidence.add("project-flow");
-    if (stems.length > 0) evidence.add("stem-flow");
-    if (deliveries.length > 0) evidence.add("delivery-flow");
-    if (
-      metrics.some(metric => metric.deliveryId !== null) &&
-      audit.some(event => event.eventType === "audit.run" && event.sha256)
-    ) {
-      evidence.add("audit-flow");
-    }
-    if (presetBindings.length > 0 && sceneBindings.length > 0)
-      evidence.add("audit-flow");
-    const presetsMatch =
-      VOCAL_PRESETS.length === 5 &&
-      new Set(VOCAL_PRESETS.map(item => item.name)).size === 5;
-    const scenesMatch =
-      AUTOMATION_SCENES.length === 6 &&
-      new Set(AUTOMATION_SCENES.map(item => item.name)).size === 6;
-    if (presetsMatch) evidence.add("exact-presets");
-    if (scenesMatch) evidence.add("exact-scenes");
-    if (
-      PLUGIN_CATALOG.length === 10 &&
-      PLUGIN_CATALOG.every(plugin => plugin.officialUrl.startsWith("https://"))
+  qualityGate: protectedProcedure.query(({ ctx }) =>
+    calculateQualityGate(ctx.user.id)
+  ),
+
+  publishPrivateGithub: protectedProcedure
+    .input(
+      z.object({
+        repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+      })
     )
-      evidence.add("plugin-sources");
-    return {
-      rule: "Solo se publica con 10/10 simultáneo y evidencia reproducible.",
-      ...evaluateQualityGate(evidence),
-    };
-  }),
+    .mutation(async ({ ctx, input }) => {
+      const gate = await calculateQualityGate(ctx.user.id);
+      if (!gate.publishable) {
+        return {
+          published: false,
+          status: "locked" as const,
+          message:
+            "GitHub publication is blocked until every dimension is 10/10.",
+          gate,
+        };
+      }
+      const stdout = await publishPrivateRepository(
+        input.repository,
+        process.cwd()
+      );
+      await writeAudit({
+        projectId: null,
+        actorId: ctx.user.id,
+        eventType: "github.private-published",
+        payload: { repository: input.repository, output: stdout.trim() },
+        sha256: createHash("sha256")
+          .update(`${input.repository}:${stdout.trim()}`)
+          .digest("hex"),
+      });
+      return {
+        published: true,
+        status: "published" as const,
+        repository: input.repository,
+        gate,
+      };
+    }),
 });

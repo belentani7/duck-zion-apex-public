@@ -13,11 +13,11 @@
 - [x] Implementar auditoría reproducible: SHA-256, inventario, señales de secretos y cambios por proyecto.
 - [x] Añadir métricas LUFS, true peak y dinámica con historial por entrega.
 - [x] Definir puerta estricta 10/10 con evidencias para backend, frontend, utilidad, relevancia, potencial e identidad.
-- [ ] Crear flujo de publicación privada en GitHub condicionado a la puerta 10/10.
+- [x] Crear flujo de publicación privada en GitHub condicionado a la puerta 10/10.
 - [x] Añadir pruebas Vitest de procedimientos y reglas críticas.
 - [x] Verificar build, typecheck, lint, tests, rutas y estados de error.
 - [x] Verificar visualmente desktop y móvil mediante capturas.
-- [ ] Crear checkpoint final únicamente cuando todos los elementos entregables estén verificados.
+- [x] Crear checkpoint final únicamente cuando todos los elementos entregables estén verificados.
 
 - [x] Configurar tipografía técnica global real y completar motion accesible, focus states, contraste y reduced-motion.
 - [x] Implementar actividad real del dashboard desde eventos auditables de proyectos, entregas y revisiones.
@@ -38,3 +38,8 @@
 - [x] Derivar la puerta 10/10 de evidencias persistidas y artefactos verificables, no de un conjunto hardcodeado en el router.
 - [x] Agrupar métricas por entrega y mostrar etiqueta/version legible en cada snapshot.
 - [x] Añadir pruebas de evaluación automática de quality gate e historial de métricas por entrega/version.
+
+- [x] Manejar errores de gh en publicación privada: CLI ausente, autenticación, repositorio existente y push fallido.
+- [x] Mostrar estados y errores específicos de publishGithub en la interfaz.
+- [x] Cubrir camino de publicación abierta y fallo de gh con pruebas reproducibles.
+- [x] Cubrir extremo a extremo publishPrivateGithub con gate abierto y fallo operativo de gh mediante mocks reproducibles.

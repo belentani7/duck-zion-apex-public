@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
+import { publishPrivateRepository } from "./routers/production";
 import type { TrpcContext } from "./_core/context";
 
 function createContext(): TrpcContext {
@@ -91,13 +92,45 @@ describe("production catalog contracts", () => {
     expect(result).toEqual({ recorded: true, evidenceKey: "build" });
   });
 
+  it("publishes privately through the guarded gh command when the runner succeeds", async () => {
+    const output = await publishPrivateRepository(
+      "owner/private-repo",
+      "/workspace/project",
+      async (_file, args) => ({
+        stdout: `created ${args[2]}`,
+        stderr: "",
+      })
+    );
+    expect(output).toBe("created owner/private-repo");
+  });
+
+  it("maps gh authentication failures to a useful typed error", async () => {
+    await expect(
+      publishPrivateRepository(
+        "owner/private-repo",
+        "/workspace/project",
+        async () => {
+          throw new Error("gh auth login required");
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      message: "GitHub CLI is not authenticated for private publication.",
+    });
+  });
+
   it("keeps GitHub publishing locked without evidence", async () => {
-    const result = await appRouter
-      .createCaller(createContext())
-      .production.qualityGate();
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.production.qualityGate();
     expect(result.publishable).toBe(false);
     expect(result.status).toBe("locked");
     expect(result.dimensions).toHaveLength(6);
     expect(result.dimensions.some(item => item.score < 10)).toBe(true);
+
+    const publish = await caller.production.publishPrivateGithub({
+      repository: "owner/private-repo",
+    });
+    expect(publish.published).toBe(false);
+    expect(publish.status).toBe("locked");
   });
 });

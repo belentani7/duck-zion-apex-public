@@ -18,3 +18,7 @@ El cálculo del gate lee únicamente eventos `quality.evidence.<key>` del proyec
 `production.runAudit` ya no acepta manifiestos del cliente. Ejecuta un inventario recursivo desde el servidor, excluye directorios de dependencias y artefactos de build, calcula SHA-256 por archivo, cuenta señales de secretos por ruta y contenido legible y persiste el digest canónico en `auditLogs`. El límite operativo de inventario es de 5.000 archivos para evitar una ejecución no acotada.
 
 La puerta no debe convertirse en 10/10 por opinión, por un valor forzado de entorno ni por fixtures de test. Requiere artefactos de evidencia, hashes, pruebas y revisión humana. Los plugins permanecen como enlaces y metadatos; no se redistribuyen binarios de terceros.
+
+## Publicación privada en GitHub
+
+La mutación `production.publishPrivateGithub` recibe un repositorio con formato `owner/name` y vuelve a calcular el gate en el servidor antes de cualquier operación. Si una sola dimensión no alcanza 10/10, devuelve `status: locked` sin ejecutar comandos ni crear repositorios. Solo con `publishable: true` ejecuta `gh repo create --private --source <project> --push`, registra el resultado con SHA-256 y muestra el estado en la interfaz. En esta entrega el control permanece bloqueado porque no se deben fabricar evidencias para forzar una publicación.

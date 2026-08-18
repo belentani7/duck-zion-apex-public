@@ -62,6 +62,7 @@ export default function Home() {
   const [stemVersion, setStemVersion] = useState("v01");
   const [stemSha, setStemSha] = useState("");
   const [metricDeliveryFilter, setMetricDeliveryFilter] = useState("all");
+  const [githubRepository, setGithubRepository] = useState("");
   const [chat, setChat] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -102,6 +103,7 @@ export default function Home() {
       }),
   });
   const runAudit = trpc.production.runAudit.useMutation();
+  const publishGithub = trpc.production.publishPrivateGithub.useMutation();
   const addComment = trpc.production.addComment.useMutation({
     onSuccess: () => {
       setCommentDraft("");
@@ -261,6 +263,11 @@ export default function Home() {
     });
   }
 
+  async function handlePublishGithub() {
+    if (!quality.data?.publishable || !githubRepository.trim()) return;
+    await publishGithub.mutateAsync({ repository: githubRepository.trim() });
+  }
+
   async function handleCreateProject() {
     await createProject.mutateAsync({
       title: "Untitled vocal production",
@@ -346,13 +353,14 @@ export default function Home() {
           runAudit.error ||
           detail.error ||
           addComment.error ||
-          updateDelivery.error) && (
+          updateDelivery.error ||
+          publishGithub.error) && (
           <div
             role="alert"
             className="mb-6 rounded-xl border border-red-300/20 bg-red-300/[0.06] px-4 py-3 text-sm text-red-100"
           >
-            Operation failed. Check the connection and try again; no partial
-            state was applied.
+            {publishGithub.error?.message ??
+              "Operation failed. Check the connection and try again; no partial state was applied."}
           </div>
         )}
         <section className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
@@ -1187,13 +1195,48 @@ export default function Home() {
                     </span>
                   </div>
                 ))}
-                <Button
-                  disabled
-                  className="mt-3 w-full bg-[#b8ff45] text-black"
-                >
-                  <LockKeyhole className="mr-2 h-4 w-4" />
-                  Publish private repo (locked)
-                </Button>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <Input
+                    value={githubRepository}
+                    onChange={event => setGithubRepository(event.target.value)}
+                    placeholder="owner/private-repo"
+                    aria-label="Private GitHub repository"
+                    className="border-white/10 bg-black/20 text-white placeholder:text-white/25"
+                  />
+                  <Button
+                    onClick={() => void handlePublishGithub()}
+                    disabled={
+                      !quality.data?.publishable ||
+                      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(
+                        githubRepository.trim()
+                      ) ||
+                      publishGithub.isPending
+                    }
+                    className="bg-[#b8ff45] text-black"
+                  >
+                    <LockKeyhole className="mr-2 h-4 w-4" />
+                    {publishGithub.isPending
+                      ? "Publishing…"
+                      : quality.data?.publishable
+                        ? "Publish private repo"
+                        : "Publish private repo (locked)"}
+                  </Button>
+                </div>
+                {publishGithub.error && (
+                  <p className="mt-2 font-mono text-[10px] text-red-200">
+                    Publication failed: {publishGithub.error.message}
+                  </p>
+                )}
+                {publishGithub.data?.status === "locked" && (
+                  <p className="mt-2 font-mono text-[10px] text-orange-200">
+                    Publication locked: complete all six 10/10 dimensions first.
+                  </p>
+                )}
+                {publishGithub.data?.status === "published" && (
+                  <p className="mt-2 font-mono text-[10px] text-[#b8ff45]">
+                    Published privately: {publishGithub.data.repository}
+                  </p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

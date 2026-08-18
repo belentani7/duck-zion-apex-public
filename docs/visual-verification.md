@@ -21,3 +21,6 @@ La vista desktop a 1280x720 mantiene la identidad oscura/neón, el encabezado de
 La vista móvil a 375x812 apila el dashboard en una sola columna legible. Las acciones primarias permanecen visibles, las tarjetas no se recortan, la barra de pestañas queda contenida y el feed de actividad conserva legibilidad. El estado vacío de proyectos y la advertencia del gate mantienen contraste y rutas de salida claras.
 
 Durante la captura no se observaron errores TypeScript; únicamente apareció una advertencia no bloqueante sobre la antigüedad de `baseline-browser-mapping`.
+
+
+La captura desktop posterior al flujo GitHub mantiene el Quality Gate visible como `LOCKED`, el CTA `Run audit`, el feed de auditoría y el mensaje de que la publicación permanece deshabilitada hasta reunir 10/10 reproducible en las seis dimensiones. El control de repositorio y los estados de publicación se encuentran en el panel Quality gate de la pestaña inferior correspondiente.
